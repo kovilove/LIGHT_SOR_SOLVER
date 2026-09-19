@@ -118,3 +118,7 @@ g++ -std=c++17 -O2 example/example1.cpp -o example1
 ## 许可证
 
 [MIT](LICENSE)
+
+## 贡献
+
+个人学习代码，欢迎提出问题和提交 Issue 或者 Pull Request。
