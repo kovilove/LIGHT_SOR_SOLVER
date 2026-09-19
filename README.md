@@ -1,31 +1,32 @@
 # LIGHT_SOR_SOLVER
 
-A lightweight, **header-only** C++17 solver for sparse linear systems based on the
-**SOR (Successive Over-Relaxation)** iterative method, with **CSR (Compressed Sparse Row)**
-storage. Designed for CFD and other sparse linear problems where a full linear-algebra
-library is overkill.
+一个轻量级、**header-only** 的 C++17 稀疏线性方程组求解器，基于 **SOR（逐次超松弛，Successive Over-Relaxation）** 迭代法，采用 **CSR（Compressed Sparse Row，压缩稀疏行）** 存储。适用于 CFD 等稀疏线性系统场景——在一些简单场景下如果不想引入完整的线性代数库，它正好够用。
 
-## Features
+## 特性
 
-- **Single header, zero dependency** — drop `LSS/light_sor_solver.hpp` into your project and include it.
-- **CSR sparse storage** — memory-efficient for large sparse systems; diagonal entries are indexed for O(1) access during iteration.
-- **Built-in robustness checks** — NaN/Inf validation, diagonal-element checks, parameter validation, and a complete error-code system.
-- **Divergence protection** — periodic residual monitoring with relative/absolute divergence detection (never silently returns garbage).
-- **Templated on floating-point types** — works with `float`, `double`, etc. (compile-time `static_assert` enforced).
-- **Convenient assembly APIs** — row-by-row (`AddRow`), batch (`AddMultiRow`), or overwrite-style full matrix (`AddMtx`) input; scalar or vector right-hand side.
+- **单头文件、零依赖**：把 `LSS/light_sor_solver.hpp` 拷进工程即可使用，无任何外部依赖，C++17 编译
+- **CSR 稀疏存储**：内存高效，适合大规模稀疏系统；对角元位置单独索引，迭代求解 O(1) 访问
+- **健壮性检查与发散保护**：NaN/Inf 校验、对角元非零检查、参数合法性校验、完整错误码体系；迭代中周期性监测残差，相对/绝对双重发散判定，不收敛时明确报错而非返回垃圾解
+- **便捷的矩阵组装**：逐行（`AddRow`）、批量追加（`AddMultiRow`）、覆盖式整表（`AddMtx`）三种输入方式；右端项支持向量累加/覆盖与标量累加/覆盖（`AddRhs`/`SetRhs`）
+- **模板化浮点类型**：支持 `float`/`double` 等，编译期 `static_assert` 强制校验
 
-## Directory Layout
+## 当前限制
+
+- 仅支持方阵；无预条件子与直接法后备，松弛因子需手动调整
+- 单线程、对象禁止拷贝/移动
+
+## 目录结构
 
 ```
 LIGHT_SOR_SOLVER/
 ├── LSS/
-│   └── light_sor_solver.hpp   # the whole library (header-only)
+│   └── light_sor_solver.hpp   # 整个库（header-only）
 ├── example/
-│   └── example1.cpp           # 10×10 sparse system demo
+│   └── example1.cpp           # 10×10 稀疏系统示例
 └── README.md
 ```
 
-## Quick Start
+## 快速上手
 
 ```cpp
 #include <iostream>
@@ -38,10 +39,10 @@ int main()
 {
     SparseMatrix<double> mtx;
 
-    // 1. Set the matrix size (square, > 2)
+    // 1. 设置矩阵尺寸（方阵，> 2）
     mtx.Reset(3);
 
-    // 2. Assemble the matrix (diagonal entries must be non-zero)
+    // 2. 组装矩阵（对角元必须非零）
     size_t errRow = 0;
     mtx.AddMtx({
         {4.0, 1.0, 0.0},
@@ -49,10 +50,10 @@ int main()
         {0.0, 1.0, 4.0},
     }, errRow);
 
-    // 3. Set the right-hand side b
+    // 3. 设置右端项 b
     mtx.SetRhs({1.0, 2.0, 3.0});
 
-    // 4. Solve Ax = b with SOR (w = 1.2, max 100 iterations)
+    // 4. SOR 求解 Ax = b（w = 1.2，最多 100 次迭代）
     std::vector<double> x(3, 0.0);
     unsigned short ret = mtx.SOR_Solve(x, 100, 1.2);
 
@@ -65,57 +66,55 @@ int main()
 }
 ```
 
-Compile with any C++17 compiler:
+任意 C++17 编译器即可编译：
 
 ```bash
 g++ -std=c++17 -O2 example/example1.cpp -o example1
 ```
 
-## API Overview
+## API 一览
 
-| Function | Description |
+| 函数 | 说明 |
 |---|---|
-| `Reset(colSize)` | Reset as a `colSize × colSize` square matrix, reserve storage |
-| `Clear()` | Clear everything, back to uninitialized state |
-| `ClearMtx()` | Clear matrix coefficients only (keep size & RHS, ready to refill) |
-| `ClearRhs()` | Zero the right-hand side (keep matrix structure) |
-| `AddRow(vec)` | Add one dense row (compressed into CSR internally) |
-| `AddMultiRow(mtx, errRow)` | Append rows; on failure, `errRow` points to the bad row |
-| `AddMtx(mtx, errRow)` | Overwrite-style batch assembly; size pre-checked |
-| `AddRhs(vec)` / `AddRhs(val)` | Accumulate RHS: `rhs += vec` / `rhs[i] += val` |
-| `SetRhs(vec)` / `SetRhs(val)` | Overwrite RHS: `rhs = vec` / `rhs[i] = val` |
-| `SOR_Solve(x, iter, alphaW, tol)` | Solve `Ax = b`; `x` is input guess / output solution |
-| `IsValid()` / `IsFullMatrix()` | Query initialization / readiness state |
-| `ColSize()` / `RowSize()` / `NotZeroElemNum()` / `Rhs()` | Query matrix properties |
+| `Reset(colSize)` | 重置为 `colSize × colSize` 方阵并预留内存 |
+| `Clear()` | 清空一切，恢复未初始化状态 |
+| `ClearMtx()` | 仅清空矩阵系数（保留尺寸与右端项，可重新填充） |
+| `ClearRhs()` | 右端项清零（保留矩阵结构） |
+| `AddRow(vec)` | 添加一行（稠密输入，内部压缩为 CSR） |
+| `AddMultiRow(mtx, errRow)` | 批量追加；失败时 `errRow` 定位出错行 |
+| `AddMtx(mtx, errRow)` | 覆盖式批量组装；带尺寸预检 |
+| `AddRhs(vec)` / `AddRhs(val)` | 累加右端项：`rhs += vec` / `rhs[i] += val` |
+| `SetRhs(vec)` / `SetRhs(val)` | 覆盖右端项：`rhs = vec` / `rhs[i] = val` |
+| `SOR_Solve(x, iter, alphaW, tol)` | 求解 `Ax = b`；`x` 输入初值猜测、输出解 |
+| `IsValid()` / `IsFullMatrix()` | 查询初始化状态 / 是否已装满可求解 |
+| `ColSize()` / `RowSize()` / `NotZeroElemNum()` / `Rhs()` | 查询矩阵属性 |
 
-### SOR_Solve Parameters
+### SOR_Solve 参数
 
-| Parameter | Meaning | Valid Range |
+| 参数 | 含义 | 合法范围 |
 |---|---|---|
-| `iter` | Max iterations | `[10, 1000]` |
-| `alphaW` | Relaxation factor (`1.0` = Gauss-Seidel) | `(0, 2]`, recommended `1.0 ~ 1.5` for SPD matrices |
-| `tol` | Convergence tolerance (normalized residual `‖Ax-b‖/‖b‖`) | `(0, 0.1]`, default `1e-6` |
+| `iter` | 最大迭代次数 | `[10, 1000]` |
+| `alphaW` | 松弛因子（`1.0` 即 Gauss-Seidel） | `(0, 2]`，SPD 矩阵推荐 `1.0 ~ 1.5` |
+| `tol` | 收敛容差（归一化残差 `‖Ax-b‖/‖b‖`） | `(0, 0.1]`，默认 `1e-6` |
 
-### Error Codes
+### 错误码
 
-Returned by all APIs; see the header for the full annotated list.
-Key ones: `LSS_OK` (success), `LSS_INI_ERR`, `LSS_VEC_LEN_ERR`, `LSS_MTX_SIZE_ERR`,
-`LSS_DIAG_ELEM_ZERO`, `LSS_NAN_ELEM_ERR`, `LSS_SPARSE_ROW_FULL`,
-`LSS_SPARSE_ROW_NOT_FULL`, `LSS_SOLVE_SET_ERR`, `LSS_NOT_CONVERGED`, `LSS_DIVERGED`.
+所有 API 均返回错误码，完整带注释清单见头文件。
+主要错误码：`LSS_OK`（成功）、`LSS_INI_ERR`、`LSS_VEC_LEN_ERR`、`LSS_MTX_SIZE_ERR`、
+`LSS_DIAG_ELEM_ZERO`、`LSS_NAN_ELEM_ERR`、`LSS_SPARSE_ROW_FULL`、
+`LSS_SPARSE_ROW_NOT_FULL`、`LSS_SOLVE_SET_ERR`、`LSS_NOT_CONVERGED`、`LSS_DIVERGED`。
 
-## Convergence Notes
+## 收敛性说明
 
-- Strict diagonal dominance is a sufficient (not necessary) condition for SOR convergence;
-  the solver pre-checks it as a warning only.
-- For symmetric positive definite (SPD) matrices, any `alphaW ∈ (0, 2)` guarantees convergence.
-- Residuals are monitored every 10 iterations; the solver returns early on convergence
-  or divergence, keeping the last iterate in `x`.
+- 严格对角占优是 SOR 收敛的**充分条件而非必要条件**；求解器会预检并仅作提示，不阻断
+- 对对称正定（SPD）矩阵，`alphaW ∈ (0, 2)` 内任意取值均保证收敛
+- 每 10 次迭代监测一次残差；收敛或发散时提前返回，`x` 保留当时的迭代结果
 
-## Requirements
+## 编译要求
 
-- C++17 or later
-- No external dependencies
+- C++17 及以上
+- 无任何外部依赖
 
-## License
+## 许可证
 
 [MIT](LICENSE)
